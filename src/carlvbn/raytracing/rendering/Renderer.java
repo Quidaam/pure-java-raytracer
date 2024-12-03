@@ -14,14 +14,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Renderer {
     private static final float GLOBAL_ILLUMINATION = 0.3F;
     private static final float SKY_EMISSION = 0.5F;
     private static final int MAX_REFLECTION_BOUNCES = 5;
     private static final boolean SHOW_SKYBOX = true;
-    
-  
 
     public static float bloomIntensity = 0.5F;
     public static int bloomRadius = 10;
@@ -34,7 +34,7 @@ public class Renderer {
      */
     public static PixelBuffer renderScene(Scene scene, int width, int height) {
         PixelBuffer pixelBuffer = new PixelBuffer(width, height);
-        
+
         for (int x = 0; x<width; x++) {
             for (int y = 0; y<height; y++) {
                 float[] screenUV = getNormalizedScreenCoordinates(x, y, width, height);
@@ -88,97 +88,277 @@ public class Renderer {
      * @param width The width of the desired output
      * @param height The height of the desired output
      * @param resolution (Floating point greater than 0 and lower or equal to 1) Controls the number of rays traced. (1 = Every pixel is ray-traced)
-     * @throws InterruptedException 
      */
     
-    public static void renderScene2(Scene scene, Graphics gfx, int width, int height, float resolution) {
-        resolution=0.1f;
-    	int blockSize = (int) (1 / resolution);
+    private static ExecutorService exec= Executors.newFixedThreadPool(4);
+    //private static ExecutorService exec= Executors.newSingleThreadExecutor();
+    //private static ExecutorService exec= Executors.newFixedThreadPool(4);
+    //private static ExecutorService exec= Executors.newThreadPerTaskExecutor(); cree un ThreadFactory et le passer en argument 
+    //private static ExecutorService exec= Executors.newVirtualThreadPerTaskExecutor();
+   
+    //Version Runnable d'un thread par ligne+ Executor + BufferedImage
+    public static void renderScene6(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+        
+        CountDownLatch latch= new CountDownLatch(width/blockSize);
+        
+        for (int x = 0; x<width; x+=blockSize) {
+        	final int xx=x;
+        	
+        	Runnable r =new Runnable() {
+        	
+        		public void run() {
+        		
+        			for (int y = 0; y<height; y+=blockSize) {
+        				float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+        				PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+        				
+        				 // Peindre le rectangle dans l'image
+                        Renderer.fillColorRect(image, xx, y, blockSize, blockSize, pixelData.getColor());
+                    
+        			}
+        		
+        			latch.countDown();
+        		}
+        	};
+        	exec.submit(r);
+        }
+        
+        try {
+			latch.await();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+      
+        // Dessiner l'image finale sur le Graphics
+        gfx.drawImage(image, 0, 0, null);
+        System.out.println("Rendered in "+ (System.currentTimeMillis() - start) + "ms");
+    }
+    
+    
+    
+    
+    private static ThreadPool tp= new ThreadPool( 50 ,4);
+    
+    //Version Runnable d'un thread par ligne+ ThreadPool+ BufferedImage
+    public static void renderScene5(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+        
+        CountDownLatch latch= new CountDownLatch(width/blockSize);
+        
+        for (int x = 0; x<width; x+=blockSize) {
+        	final int xx=x;
+        	
+        	Runnable r =new Runnable() {
+        	
+        		public void run() {
+        		
+        			for (int y = 0; y<height; y+=blockSize) {
+        				float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+        				PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+        				
+        				 // Peindre le rectangle dans l'image
+                        Renderer.fillColorRect(image, xx, y, blockSize, blockSize, pixelData.getColor());
+                    
+        			}
+        		
+        			latch.countDown();
+        		}
+        	};
+        	try {
+				tp.submit(r);
+			} catch (InterruptedException e) {
+				
+				e.printStackTrace();
+			}
+        }
+        
+        try {
+			latch.await();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+      
+        // Dessiner l'image finale sur le Graphics
+        gfx.drawImage(image, 0, 0, null);
+        System.out.println("Rendered in "+ (System.currentTimeMillis() - start) + "ms");
+    }
+    
+    
+    
+    
+    //Version Runnable d'un thread par ligne + ThreadPool
+    public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+        
+        CountDownLatch latch= new CountDownLatch(width/blockSize);
+        
+        for (int x = 0; x<width; x+=blockSize) {
+        	final int xx=x;
+        	
+        	Runnable r =new Runnable() {
+        	
+        		public void run() {
+        		
+        			for (int y = 0; y<height; y+=blockSize) {
+        				float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+        				PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+        				
+        				//Synchronisation de gfx pour que l'affichage se passe bien et que d'autre méthode ne la modifie pas 
+        				synchronized(gfx) {
+        					gfx.setColor(pixelData.getColor().toAWTColor());
+        					gfx.fillRect(xx, y, blockSize, blockSize);
+        				}
+        			}
+        		
+        			latch.countDown();
+        		}
+        	};
+        	try {
+				tp.submit(r);
+			} catch (InterruptedException e) {
+				
+				e.printStackTrace();
+			}
+        }
+        
+        try {
+			latch.await();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+      
+       
+        System.out.println("Rendered in "+ (System.currentTimeMillis() - start) + "ms");
+    }
+    
+    
+    
+    
+    
+    //Version Runnable d'un thread par ligne  
+    public static void renderScene3(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
         long start = System.currentTimeMillis();
         List<Thread> threads= new ArrayList<>();
+        int nb=0;
+        
         
         for (int x = 0; x<width; x+=blockSize) {
-            	final int xx=x;
-            	Runnable r= new Runnable() {
-            		public void run() {
-            			for (int y = 0; y<height; y+=blockSize) {
-	            			float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
-	            			PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
-	            			
-	            			synchronized(gfx) {
-		            			gfx.setColor(pixelData.getColor().toAWTColor());
-		            			gfx.fillRect(xx, y, blockSize, blockSize);
-	            			}
-           
-            			}
-            		}
-            	};
-            	Thread t= new Thread( r);
-            	t.start();
-            	threads.add(t);
-            }
-        
+        	final int xx=x;
         	
-            try {
-	            for( Thread t: threads) {
-	            	t.join();
-	            }
-            }catch( InterruptedException i) {
-            	i.printStackTrace();
-            }
-        
-        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
-    }
-
-    
-    
-    private static ThreadPool pool= new ThreadPool(2000, 4);
-    public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
-        
-    	
-    	resolution=0.1f;
-    	int blockSize = (int) (1 / resolution);
-        long start = System.currentTimeMillis();
-        
-        CountDownLatch latch= new CountDownLatch(10000);
-        
-        for (int x = 0; x<width; x+=blockSize) {
-            	final int xx=x;
-            	try {
-            		pool.submit( new Runnable() {
-            			public void run() {
-            			for (int y = 0; y<height; y+=blockSize) {
-	            			float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
-	            			PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
-	            			
-	            			synchronized(gfx) {
-		            			gfx.setColor(pixelData.getColor().toAWTColor());
-		            			gfx.fillRect(xx, y, blockSize, blockSize);
-	            			}
-           
-            			}
-            			latch.countDown();
-            		}
-            	});
-            	}catch( InterruptedException e) {
-            		e.printStackTrace();
-            	}
-            
+        	Runnable r =new Runnable() {
+        	
+        		public void run() {
+        		
+        			for (int y = 0; y<height; y+=blockSize) {
+        				float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+        				PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+        				
+        				//Synchronisation de gfx pour que l'affichage se passe bien et que d'autre méthode ne la modifie pas 
+        				synchronized(gfx) {
+        					gfx.setColor(pixelData.getColor().toAWTColor());
+        					gfx.fillRect(xx, y, blockSize, blockSize);
+        				}
+        			}
+        		
+        		}
+        	};
+        	Thread t= new Thread(r);
+        	t.start();
+        	threads.add(t);
+        	nb++;
         }
+        
         try {
-        	latch.await();
+        	for(Thread t: threads) {
+        		t.join();
+        	}
         }catch( InterruptedException e) {
-        	e.printStackTrace();
+        		e.printStackTrace();
+        }
+       
+        System.out.println("Nombre de thread " + nb );
+        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
+    }
+    
+    //Version Runnable d'un pixel 
+    public static void renderScene2(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+        List<Thread> threads= new ArrayList<>();
+        int nb=0;
+        
+        
+        for (int x = 0; x<width; x+=blockSize) {
+        	final int xx=x;
+        	for (int y = 0; y<height; y+=blockSize) {
+        	final int yy=y;
+        	Runnable r =new Runnable() {
+        	
+        		public void run() {
+        		
+        				float[] uv = getNormalizedScreenCoordinates(xx, yy, width, height);
+        				PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+        				
+        				//Synchronisation de gfx pour que l'affichage se passe bien et que d'autre méthode ne la modifie pas 
+        				synchronized(gfx) {
+        					gfx.setColor(pixelData.getColor().toAWTColor());
+        					gfx.fillRect(xx, yy, blockSize, blockSize);
+        				}
+        			}
+        		
+        	};
+        	Thread t= new Thread(r);
+        	t.start();
+        	threads.add(t);
+        	nb++;
+        	}
         }
         
-        	
+        try {
+        	for(Thread t: threads) {
+        		t.join();
+        	}
+        }catch( InterruptedException e) {
+        		e.printStackTrace();
+        }
+       
+        System.out.println("Nombre de thread " + nb );
+        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
+    }
+    
+    
+    //Version sans Thread
+    public static void renderScene1(Scene scene, Graphics gfx, int width, int height, float resolution) {
+    	resolution=0.1f;
+     	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+
         
+        for (int x = 0; x<width; x+=blockSize) {
+            for (int y = 0; y<height; y+=blockSize) {
+                float[] uv = getNormalizedScreenCoordinates(x, y, width, height);
+                PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+
+                gfx.setColor(pixelData.getColor().toAWTColor());
+                gfx.fillRect(x, y, blockSize, blockSize);
+            }
+        }
+
         System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
     }
 
-    
-    
-    
     /** Same as the above but applies Post-Processing effects before drawing. */
     public static void renderScenePostProcessed(Scene scene, Graphics gfx, int width, int height, float resolution) {
         int bufferWidth = Math.round(width*resolution+0.49F);
