@@ -3,55 +3,58 @@ package carlvbn.raytracing.rendering;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 public class ThreadPool {
+	private BlockingQueue<Runnable> job;
+	private List<Thread> workers;
 	
-	private ArrayBlockingQueue<Runnable> queue;
-	private List<Thread> threads= new ArrayList<>();
-	
-	private class Worker implements Runnable {
+	private class Worker implements Runnable{
+
 		
 		public void run() {
-			try {
-				while(!Thread.interrupted()) {
-						Runnable r=queue.take();
-						r.run();
-;				}
-			}catch( InterruptedException i) {
-				i.printStackTrace();
+			while(!Thread.interrupted()) {
+				try {
+					Runnable r= job.take();
+					r.run();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				
 			}
+			
 		}
+		
 	}
-	
-	public ThreadPool( int qsize, int N) {
-		queue= new ArrayBlockingQueue<>(qsize);
-		for( int i=0; i<N; i++) {
+	public ThreadPool(int size, int nbT) {
+		job= new ArrayBlockingQueue<>(size);
+		workers= new ArrayList<>();
+		for( int i=0; i< nbT; i++) {
 			Thread t= new Thread(new Worker());
+			workers.add(t);
 			t.start();
-			threads.add(t);
 		}
+		
 	}
 	
-	public void submit(Runnable r) throws InterruptedException{
-		queue.put(r);
+	public void submit( Runnable r) throws InterruptedException {
+		job.put(r);
 	}
 	
 	public void shutdown() {
-		
-		for(Thread t: threads) {
+		for(Thread t: workers) {
+			t.interrupt();
 			try {
-				t.interrupt();
 				t.join();
-			}catch(  InterruptedException e) {}
-			threads.clear();
-			queue.clear();
+			}catch(InterruptedException e) {
+				job.clear();
+				workers.clear();
+				e.printStackTrace();
+				
+			}
 		}
-		
+		job.clear();
+		workers.clear();
 	}
 	
-	
-	
-	
-	
 }
-	
