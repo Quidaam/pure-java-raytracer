@@ -10,13 +10,18 @@ import carlvbn.raytracing.solids.Solid;
 import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 public class Renderer {
     private static final float GLOBAL_ILLUMINATION = 0.3F;
     private static final float SKY_EMISSION = 0.5F;
     private static final int MAX_REFLECTION_BOUNCES = 5;
     private static final boolean SHOW_SKYBOX = true;
+    
+  
 
     public static float bloomIntensity = 0.5F;
     public static int bloomRadius = 10;
@@ -29,7 +34,7 @@ public class Renderer {
      */
     public static PixelBuffer renderScene(Scene scene, int width, int height) {
         PixelBuffer pixelBuffer = new PixelBuffer(width, height);
-
+        
         for (int x = 0; x<width; x++) {
             for (int y = 0; y<height; y++) {
                 float[] screenUV = getNormalizedScreenCoordinates(x, y, width, height);
@@ -83,25 +88,97 @@ public class Renderer {
      * @param width The width of the desired output
      * @param height The height of the desired output
      * @param resolution (Floating point greater than 0 and lower or equal to 1) Controls the number of rays traced. (1 = Every pixel is ray-traced)
+     * @throws InterruptedException 
      */
-    public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
-        int blockSize = (int) (1 / resolution);
+    
+    public static void renderScene2(Scene scene, Graphics gfx, int width, int height, float resolution) {
+        resolution=0.1f;
+    	int blockSize = (int) (1 / resolution);
         long start = System.currentTimeMillis();
-
+        List<Thread> threads= new ArrayList<>();
         
         for (int x = 0; x<width; x+=blockSize) {
-            for (int y = 0; y<height; y+=blockSize) {
-                float[] uv = getNormalizedScreenCoordinates(x, y, width, height);
-                PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
-
-                gfx.setColor(pixelData.getColor().toAWTColor());
-                gfx.fillRect(x, y, blockSize, blockSize);
+            	final int xx=x;
+            	Runnable r= new Runnable() {
+            		public void run() {
+            			for (int y = 0; y<height; y+=blockSize) {
+	            			float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+	            			PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+	            			
+	            			synchronized(gfx) {
+		            			gfx.setColor(pixelData.getColor().toAWTColor());
+		            			gfx.fillRect(xx, y, blockSize, blockSize);
+	            			}
+           
+            			}
+            		}
+            	};
+            	Thread t= new Thread( r);
+            	t.start();
+            	threads.add(t);
             }
-        }
-
+        
+        	
+            try {
+	            for( Thread t: threads) {
+	            	t.join();
+	            }
+            }catch( InterruptedException i) {
+            	i.printStackTrace();
+            }
+        
         System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
     }
 
+    
+    
+    private static ThreadPool pool= new ThreadPool(2000, 4);
+    public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution) {
+        
+    	
+    	resolution=0.1f;
+    	int blockSize = (int) (1 / resolution);
+        long start = System.currentTimeMillis();
+        
+        CountDownLatch latch= new CountDownLatch(10000);
+        
+        for (int x = 0; x<width; x+=blockSize) {
+            	final int xx=x;
+            	try {
+            		pool.submit( new Runnable() {
+            			public void run() {
+            			for (int y = 0; y<height; y+=blockSize) {
+	            			float[] uv = getNormalizedScreenCoordinates(xx, y, width, height);
+	            			PixelData pixelData = computePixelInfo(scene, uv[0], uv[1]);
+	            			
+	            			synchronized(gfx) {
+		            			gfx.setColor(pixelData.getColor().toAWTColor());
+		            			gfx.fillRect(xx, y, blockSize, blockSize);
+	            			}
+           
+            			}
+            			latch.countDown();
+            		}
+            	});
+            	}catch( InterruptedException e) {
+            		e.printStackTrace();
+            	}
+            
+        }
+        try {
+        	latch.await();
+        }catch( InterruptedException e) {
+        	e.printStackTrace();
+        }
+        
+        	
+        
+        System.out.println("Rendered in " + (System.currentTimeMillis() - start) + "ms");
+    }
+
+    
+    
+    
     /** Same as the above but applies Post-Processing effects before drawing. */
     public static void renderScenePostProcessed(Scene scene, Graphics gfx, int width, int height, float resolution) {
         int bufferWidth = Math.round(width*resolution+0.49F);
