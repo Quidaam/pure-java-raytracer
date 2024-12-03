@@ -1,0 +1,57 @@
+Commande pour voir le nombre de processeur sur notre terminal : cat /proc/cpuinfo
+Nombre de coeur sur la machine: 4 coeurs physiques
+Hyper-Threaded: oui (8 thread pour 4 coeurs)
+
+1)
+public static void renderScene(Scene scene, Graphics gfx, int width, int height, float resolution)
+Nous avons une scene, un Grahics, et trois valeurs qui représentent la largeur, la longueur et la resolution du rayon 
+
+La boucle divise l'écran en petits blocs (en fonction de la résolution).
+Pour chaque bloc, elle calcule la couleur en fonction de la scène, puis dessine ce bloc.
+La double boucle permet d'afficher la Scene de façon graphique.
+
+4)
+
+On doit synchroniser gfx car c'est une interface partagé avec d'autres méthodes.
+Comme ceci :				
+synchronized(gfx) {
+	gfx.setColor(pixelData.getColor().toAWTColor());
+	gfx.fillRect(xx, yy, blockSize, blockSize);	
+}
+
+un seul thread qui exécute une opération sur gfx, sans conflit.
+
+5)
+Nous avons trop de thread crée ce qui tue le parallélisme et le rend inefficace.
+Sans Thread : 100 ms
+Par Pixel: environs 2000 ms
+Un par ligne : 200 ms
+
+6)
+On remarque plus on augmente le nombre de tache et de thread plus le programme devient inefficace
+
+7) 
+File de 1000: 40 ms
+file de 500: 35 ms
+file de 250: 30 ms
+file de 125: 30 ms
+file de 50: 30 ms
+
+
+8)
+On obtient environs 20 ms, on a donc une meilleurs performance, plus efficace d'utiliser les BUfferdImage.
+
+9) 
+On obtient environs 10 ms, la meilleurs performance obtenu.
+
+10)
+newSingleThreadExecutor: environs 30 ms
+newFixedThreadPool: environs 15ms
+newThreadPerTaskExecutor: environs 30 ms
+newVirtualThreadPerTaskExecutor: environs 10 ms
+
+On en conclut que la meilleurs combinaison pour optimiser ce programme est la version avec l'utilisation de BufferedImage en plus d'un thread par ligne de pixel, et un Executor.newFixedThreadPool(4).
+
+
+
+
