@@ -92,7 +92,6 @@ public class Renderer {
     
     private static ExecutorService exec= Executors.newFixedThreadPool(4);
     //private static ExecutorService exec= Executors.newSingleThreadExecutor();
-    //private static ExecutorService exec= Executors.newFixedThreadPool(4);
     //private static ExecutorService exec= Executors.newThreadPerTaskExecutor(); cree un ThreadFactory et le passer en argument 
     //private static ExecutorService exec= Executors.newVirtualThreadPerTaskExecutor();
    
